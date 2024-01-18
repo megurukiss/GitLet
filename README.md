@@ -40,6 +40,9 @@
 6. `Static Void globalLog()`: prints the commit history of all commits
 7. `Static Void find(String message)`: prints the commit hash of the commit with the given message
 8. `Static Void status()`: prints the status of the repository
+9. `Static Void checkoutSingleFile(String fileName)`: checks out the file in head commit
+10. `Static Void checkoutSingleFile(String commitHash, String fileName)`: checks out the file in the given commit
+11. `Static Void checkoutBranch(String branchName)`: checks out the branch
 
 
 ### Commit Class

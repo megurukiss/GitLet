@@ -2,8 +2,14 @@ package gitlet;
 
 import java.io.File;
 import static gitlet.Utils.*;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.stream.Stream;
 // TODO: any imports you need here
 
 /** Represents a gitlet repository.
@@ -308,15 +314,101 @@ public class Repository {
     }
 
     public static void checkoutSingleFile(String fileName){
-
+        // read head commit
+        HashMap<String, String> head = Utils.readObject(HEAD_FILE, HashMap.class);
+        Commit headCommitObj= Commit.loadCommit(head.get("head"));
+        //check if file exists in head commit
+        if(!headCommitObj.getBlobsMap().containsKey(fileName)){
+            // if not, print error File does not exist in that commit.
+            System.out.println("File does not exist in that commit.");
+            System.exit(0);
+        }
+        // if yes, overwrite file in working directory
+        String blobHash = headCommitObj.getBlobsMap().get(fileName);
+        //read file and write to original file
+        File file = join(CWD, fileName);
+        File blobFile = join(Blob.blobDir, blobHash);
+        String content = Utils.readContentsAsString(blobFile);
+        Utils.writeContents(file, content);
+        // read stage file
+        HashMap<String, String> stage = Utils.readObject(Stage_FILE, HashMap.class);
+        // check if file is in stage file
+        if(stage.containsKey(fileName)){
+            // if yes, delete file from stage file
+            stage.remove(fileName);
+            Utils.writeObject(Stage_FILE, stage);
+        }
     }
 
-    public static void checkoutCommit(String commitHash, String fileName){
-
+    public static void checkoutSingleFile(String commitHash, String fileName){
+        //read commit
+        Commit commitObj = Commit.loadCommit(commitHash);
+        //check if file exists in commit
+        if(!commitObj.getBlobsMap().containsKey(fileName)){
+            // if not, print error File does not exist in that commit.
+            System.out.println("File does not exist in that commit.");
+            System.exit(0);
+        }
+        // read file and write to original file
+        File file = join(CWD, fileName);
+        File blobFile = join(Blob.blobDir, commitObj.getBlobsMap().get(fileName));
+        String content = Utils.readContentsAsString(blobFile);
+        Utils.writeContents(file, content);
+        // read stage file
+        HashMap<String, String> stage = Utils.readObject(Stage_FILE, HashMap.class);
+        // check if file is in stage file
+        if(stage.containsKey(fileName)){
+            // if yes, delete file from stage file
+            stage.remove(fileName);
+            Utils.writeObject(Stage_FILE, stage);
+        }
     }
 
     public static void checkoutBranch(String branchName){
-
+        // read branch file
+        String headCommitHash = Branch.readHead(branchName);
+        // read head file
+        HashMap<String, String> head = Utils.readObject(HEAD_FILE, HashMap.class);
+        // check if branch is current branch
+        if(head.get("branch").equals(branchName)){
+            // if yes, print error No need to check out the current branch.
+            System.out.println("No need to checkout the current branch.");
+            System.exit(0);
+        }
+        // read branch head commit
+        Commit branchCommitObj = Commit.loadCommit(headCommitHash);
+        // read commit blob map
+        HashMap<String, String> blobsMap = branchCommitObj.getBlobsMap();
+        // walk files in CWD, check if file is in commit blob map. if not, delete file. if yes, overwrite file
+        try{
+            Stream<Path> stream = Files.walk(CWD.toPath());
+            stream.forEach(path -> {
+                //String fileName = path.getFileName().toString();
+                String relativePath=CWD.toPath().relativize(path).toString();
+                if(!blobsMap.containsKey(relativePath)){
+                    try {
+                        Files.delete(path);
+                    }catch (IOException ex){
+                        ex.printStackTrace();
+                    }
+                }else{
+                    File file = join(CWD, relativePath);
+                    File blobFile = join(Blob.blobDir, blobsMap.get(relativePath));
+                    String content = Utils.readContentsAsString(blobFile);
+                    Utils.writeContents(file, content);
+                }
+            });
+        }catch (IOException ex){
+            ex.printStackTrace();
+        }
+        // clear stage file
+        Utils.writeObject(Stage_FILE, new HashMap<String,String>());
+        // clear removed stage file
+        Utils.writeObject(REMOVED_STAGE_FILE, new LinkedList<String>());
+        // update head file
+        head.put("branch", branchName);
+        head.put("head", headCommitHash);
+        Utils.writeObject(HEAD_FILE, head);
     }
 
 }

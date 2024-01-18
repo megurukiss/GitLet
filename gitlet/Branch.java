@@ -37,6 +37,11 @@ public class Branch {
 
     public static String readHead(String branchName){
         File branchPath = Utils.join(branchDir, branchName);
+        // check if branch exists
+        if(!branchPath.exists()){
+            System.out.println("A branch with that name does not exist.");
+            System.exit(0);
+        }
         return Utils.readContentsAsString(branchPath);
     }
 }

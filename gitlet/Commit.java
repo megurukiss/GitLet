@@ -103,6 +103,10 @@ public class Commit implements Serializable{
     // load commit from commit folder given hash value
     public static Commit loadCommit(String hash){
         File commitFile = Utils.join(commitDir, hash);
+        if(!commitFile.exists()){
+            System.out.println("No commit with that id exists.");
+            System.exit(0);
+        }
         return Utils.readObject(commitFile, Commit.class);
     }
 
