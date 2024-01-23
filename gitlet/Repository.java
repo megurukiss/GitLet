@@ -142,6 +142,42 @@ public class Repository {
 
         // remove blobs in removed stage file
         commit.deleteBlobsMap(removedStage);
+        commit.setHash();
+        commit.setPath();
+        //clear stage file
+        Utils.writeObject(Stage_FILE, new HashMap<String,String>());
+        // clear removed stage file
+        Utils.writeObject(REMOVED_STAGE_FILE, new LinkedList<String>());
+        // update head commit hash value in head file
+        head.put("head", commit.getHash());
+        Utils.writeObject(HEAD_FILE, head);
+        // update branch head commit hash value in branch file
+        Branch.updateHead(head.get("branch"), commit.getHash());
+        // save commit object
+        commit.save();
+    }
+
+    public static void commitMerge(String message, String parent1, String parent2){
+        // read head commit
+        HashMap<String, String> head = Utils.readObject(HEAD_FILE, HashMap.class);
+        // Initialize commit object
+        Commit commit = new Commit(message, parent1,parent2);
+        // read stage file
+        HashMap<String, String> stage = Utils.readObject(Stage_FILE, HashMap.class);
+        // read removed stage file
+        LinkedList<String> removedStage = Utils.readObject(REMOVED_STAGE_FILE, LinkedList.class);
+        // update blobsMap in commit object
+        commit.updateBlobsMap(stage);
+        // save blobs in stage file
+        for (String key : stage.keySet()) {
+            Blob blob = new Blob(key);
+            blob.save();
+        }
+
+        // remove blobs in removed stage file
+        commit.deleteBlobsMap(removedStage);
+        commit.setHash();
+        commit.setPath();
         //clear stage file
         Utils.writeObject(Stage_FILE, new HashMap<String,String>());
         // clear removed stage file
@@ -187,7 +223,6 @@ public class Repository {
         }
     }
 
-    /** modify for merge command */
     public static void log(){
         // read head commit
         HashMap<String, String> head = Utils.readObject(HEAD_FILE, HashMap.class);
@@ -217,7 +252,7 @@ public class Repository {
     }
 
     public static void globalLog(){
-        LinkedList<String> commits =(LinkedList<String>) Utils.plainFilenamesIn(Commit.commitDir);
+        LinkedList<String> commits =new LinkedList<>(Utils.plainFilenamesIn(Commit.commitDir));
         for(String commit: commits){
             Commit commitObj = Commit.loadCommit(commit);
             // print commit information
@@ -265,7 +300,7 @@ public class Repository {
         // read all commits
 //        LinkedList<String> commits =(LinkedList<String>) Utils.plainFilenamesIn(Commit.commitDir);
         // read all branches
-        LinkedList<String> branches =(LinkedList<String>) Utils.plainFilenamesIn(Branch.branchDir);
+        ArrayList<String> branches =new ArrayList<>(Utils.plainFilenamesIn(Branch.branchDir));
         // read all blobs
 //        LinkedList<String> blobs =(LinkedList<String>) Utils.plainFilenamesIn(Blob.blobDir);
 
@@ -340,6 +375,10 @@ public class Repository {
         }
     }
 
+    /** If a working file is untracked in the current branch and would be overwritten
+     * by the checkout, print There is an untracked file in the way;
+     * delete it, or add and commit it first. and exit
+     * Support abbreviated version of commit hash */
     public static void checkoutSingleFile(String commitHash, String fileName){
         //read commit
         Commit commitObj = Commit.loadCommit(commitHash);
@@ -379,6 +418,52 @@ public class Repository {
         Commit branchCommitObj = Commit.loadCommit(headCommitHash);
         // read commit blob map
         HashMap<String, String> blobsMap = branchCommitObj.getBlobsMap();
+
+        // create queue
+        Queue<File> queue = new LinkedList<>();
+        // push CWD to queue
+        queue.add(CWD);
+        // iterate through queue
+        while(!queue.isEmpty()){
+            // pop file from stack
+            File folder = queue.poll();
+            File[] listFiles = folder.listFiles();
+            for (File f : listFiles){
+                // check if a folder
+                if(f.isDirectory()){
+                    if(f.getName().equals(".gitlet")){
+                        continue;
+                    }
+                    // push folder to queue
+                    queue.add(f);
+                }
+                else{
+                    String relativePath=CWD.toPath().relativize(f.toPath()).toString();
+                    if(!blobsMap.containsKey(relativePath)){
+                        try {
+                            Files.delete(f.toPath());
+                        }catch (IOException ex){
+                            ex.printStackTrace();
+                        }
+                    }else{
+                        File F = join(CWD, relativePath);
+                        File blobFile = join(Blob.blobDir, blobsMap.get(relativePath));
+                        String content = Utils.readContentsAsString(blobFile);
+                        Utils.writeContents(F, content);
+                    }
+                }
+            }
+            // check if the current folder is empty
+            if(folder.listFiles().length == 0){
+                try {
+                    Files.delete(folder.toPath());
+                }catch (IOException ex){
+                    ex.printStackTrace();
+                }
+            }
+        }
+
+        /**
         // walk files in CWD, check if file is in commit blob map. if not, delete file. if yes, overwrite file
         try{
             Stream<Path> stream = Files.walk(CWD.toPath());
@@ -400,7 +485,7 @@ public class Repository {
             });
         }catch (IOException ex){
             ex.printStackTrace();
-        }
+        }*/
         // clear stage file
         Utils.writeObject(Stage_FILE, new HashMap<String,String>());
         // clear removed stage file
@@ -411,4 +496,255 @@ public class Repository {
         Utils.writeObject(HEAD_FILE, head);
     }
 
+    public static void branch(String branchName){
+        // check if branch exists
+        File branchFile = join(Branch.branchDir, branchName);
+        if(branchFile.exists()){
+            System.out.println("A branch with that name already exists.");
+            System.exit(0);
+        }
+        // read head file
+        HashMap<String, String> head = Utils.readObject(HEAD_FILE, HashMap.class);
+        // create branch file
+        Branch branch = new Branch(branchName, head.get("head"));
+        branch.save();
+    }
+
+    public static void removeBranch(String branchName){
+        // check if branch exists
+        File branchFile = join(Branch.branchDir, branchName);
+        if(!branchFile.exists()){
+            System.out.println("A branch with that name does not exist.");
+            System.exit(0);
+        }
+        // read head file
+        HashMap<String, String> head = Utils.readObject(HEAD_FILE, HashMap.class);
+        // check if branch is current branch
+        if(head.get("branch").equals(branchName)){
+            System.out.println("Cannot remove the current branch.");
+            System.exit(0);
+        }
+        // delete branch file
+        branchFile.delete();
+    }
+
+    public static void reset(String commitHash){
+        // read commit
+        Commit commitObj = Commit.loadCommit(commitHash);
+        // read head
+        HashMap<String, String> head = Utils.readObject(HEAD_FILE, HashMap.class);
+        // read current branch
+        String branch = head.get("branch");
+        // save commitHash as current branch and head commit hash
+        Branch.updateHead(branch, commitHash);
+        head.put("head", commitHash);
+        Utils.writeObject(HEAD_FILE, head);
+        // read commit blob map
+        HashMap<String, String> blobsMap = commitObj.getBlobsMap();
+        // walk files in CWD, check if file is in commit blob map. if not, delete file. if yes, overwrite file
+        // use queue to replace forEach
+        // create queue
+        Queue<File> queue = new LinkedList<>();
+        // push CWD to queue
+        queue.add(CWD);
+        // iterate through queue
+        while(!queue.isEmpty()){
+            // pop file from stack
+            File folder = queue.poll();
+            File[] listFiles = folder.listFiles();
+            for (File f : listFiles){
+                // check if a folder
+                if(f.isDirectory()){
+                    if(f.getName().equals(".gitlet")){
+                        continue;
+                    }
+                    // push folder to queue
+                    queue.add(f);
+                }
+                else{
+                    String relativePath=CWD.toPath().relativize(f.toPath()).toString();
+                    if(!blobsMap.containsKey(relativePath)){
+                        try {
+                            Files.delete(f.toPath());
+                        }catch (IOException ex){
+                            ex.printStackTrace();
+                        }
+                    }else{
+                        File F = join(CWD, relativePath);
+                        File blobFile = join(Blob.blobDir, blobsMap.get(relativePath));
+                        String content = Utils.readContentsAsString(blobFile);
+                        Utils.writeContents(F, content);
+                        blobsMap.remove(relativePath);
+                    }
+                }
+            }
+            // check if the current folder is empty
+            if(folder.listFiles().length == 0){
+                try {
+                    Files.delete(folder.toPath());
+                }catch (IOException ex){
+                    ex.printStackTrace();
+                }
+            }
+        }
+        // iterate through commit blob map
+        for (String key : blobsMap.keySet()) {
+            String BlobHash = blobsMap.get(key);
+            // read file and write to original file
+            File file = join(CWD, key);
+            File blobFile = join(Blob.blobDir, BlobHash);
+            String content = Utils.readContentsAsString(blobFile);
+            //create file if not exists
+            if (!file.exists()) {
+                try {
+                    file.createNewFile();
+                } catch (Exception e) {
+                    System.out.println("Error creating file");
+                }
+            }
+            Utils.writeContents(file, content);
+        }
+        /**
+        try{
+            Stream<Path> stream = Files.walk(CWD.toPath());
+            stream.forEach(path -> {
+                // skip folders and files in .gitlet folder
+                if(path.toString().contains("/.") || path.toString().){
+                    return;
+                }
+                //String fileName = path.getFileName().toString();
+                String relativePath=CWD.toPath().relativize(path).toString();
+                if(!blobsMap.containsKey(relativePath)){
+                    try {
+                        Files.delete(path);
+                    }catch (IOException ex){
+                        ex.printStackTrace();
+                    }
+                }else{
+                    File file = join(CWD, relativePath);
+                    File blobFile = join(Blob.blobDir, blobsMap.get(relativePath));
+                    String content = Utils.readContentsAsString(blobFile);
+                    Utils.writeContents(file, content);
+                }
+            });
+        }catch (IOException ex){
+            ex.printStackTrace();
+        }
+         */
+        Utils.writeObject(Stage_FILE, new HashMap<String,String>());
+        // clear removed stage file
+        Utils.writeObject(REMOVED_STAGE_FILE, new LinkedList<String>());
+    }
+
+    public static void merge(String branchName) {
+        Boolean conflict = false;
+        // read branch head commit
+        String branchHeadCommitHash = Branch.readHead(branchName);
+        // read head commit
+        HashMap<String, String> head = Utils.readObject(HEAD_FILE, HashMap.class);
+        String headCommitHash = head.get("head");
+        String curBranch = head.get("branch");
+        // get split point
+        String splitPointHash = Commit.searchSplit(headCommitHash, branchHeadCommitHash);
+        // check if split point is current head or branch head
+        if (splitPointHash.equals(branchHeadCommitHash)) {
+            System.out.println("Given branch is an ancestor of the current branch.");
+            System.exit(0);
+        } else if (splitPointHash.equals(headCommitHash)) {
+            checkoutBranch(branchName);
+            System.out.println("Current branch fast-forwarded.");
+            System.exit(0);
+        }
+        // read split point commit
+        Commit splitPointCommitObj = Commit.loadCommit(splitPointHash);
+        HashMap<String, String> splitPointBlobsMap = splitPointCommitObj.getBlobsMap();
+        // read branch commit
+        Commit branchCommitObj = Commit.loadCommit(branchHeadCommitHash);
+        HashMap<String, String> branchBlobsMap = branchCommitObj.getBlobsMap();
+        // read head commit
+        Commit headCommitObj = Commit.loadCommit(headCommitHash);
+        HashMap<String, String> headBlobsMap = headCommitObj.getBlobsMap();
+
+        // read stage file
+        HashMap<String, String> stage = Utils.readObject(Stage_FILE, HashMap.class);
+        LinkedList<String> removedStage = Utils.readObject(REMOVED_STAGE_FILE, LinkedList.class);
+
+        // iterate through split point commit blobs map
+        for (String key : splitPointBlobsMap.keySet()) {
+            String BlobHash = splitPointBlobsMap.get(key);
+            // check if file is modified in the given branch and also in the current branch
+            if (branchBlobsMap.containsKey(key) && headBlobsMap.containsKey(key)) {
+                // check if file is modified in the given branch but not in the current branch
+                if (!branchBlobsMap.get(key).equals(BlobHash) && headBlobsMap.get(key).equals(BlobHash)) {
+                    File file = join(CWD, key);
+                    File blobFile = join(Blob.blobDir, branchBlobsMap.get(key));
+                    String content = Utils.readContentsAsString(blobFile);
+                    Utils.writeContents(file, content);
+                    stage.put(key, branchBlobsMap.get(key));
+                }
+                // file modification conflicts
+                else if (!branchBlobsMap.get(key).equals(BlobHash) && !headBlobsMap.get(key).equals(BlobHash) && !branchBlobsMap.get(key).equals(headBlobsMap.get(key))) {
+                    conflict = true;
+                    File file = join(CWD, key);
+                    File blobFile1 = join(Blob.blobDir, branchBlobsMap.get(key));
+                    File blobFile2 = join(Blob.blobDir, headBlobsMap.get(key));
+                    String content1 = Utils.readContentsAsString(blobFile1);
+                    String content2 = Utils.readContentsAsString(blobFile2);
+                    Utils.writeContents(file, "<<<<<<< HEAD\n" + content2 + "=======\n" + content1 + ">>>>>>>\n");
+                    stage.put(key, branchBlobsMap.get(key));
+                }
+            }
+            //Any files present at the split point, unmodified in the current branch, and absent in the given branch should be removed (and untracked).
+            else if (!branchBlobsMap.containsKey(key) && headBlobsMap.containsKey(key) && headBlobsMap.get(key).equals(BlobHash)) {
+                File file = join(CWD, key);
+                file.delete();
+                removedStage.add(key);
+            }
+            // remove from branch blobs map and head blobs map
+            branchBlobsMap.remove(key);
+//            headBlobsMap.remove(key);
+        }
+
+        // iterate through branch commit blobs map
+        for (String key : branchBlobsMap.keySet()) {
+            String BlobHash = branchBlobsMap.get(key);
+            // Any files that were not present at the split point and are present only in the given branch should be checked out and staged.
+            if(!headBlobsMap.containsKey(key)){
+                File file = join(CWD, key);
+                File blobFile = join(Blob.blobDir, BlobHash);
+                String content = Utils.readContentsAsString(blobFile);
+                if (!file.exists()) {
+                    try {
+                        file.createNewFile();
+                    } catch (Exception e) {
+                        System.out.println("Error creating file");
+                    }
+                }
+                Utils.writeContents(file, content);
+                stage.put(key, BlobHash);
+            }
+            else if(!headBlobsMap.get(key).equals(BlobHash)){
+                conflict = true;
+                File file = join(CWD, key);
+                File blobFile1 = join(Blob.blobDir, branchBlobsMap.get(key));
+                File blobFile2 = join(Blob.blobDir, headBlobsMap.get(key));
+                String content1 = Utils.readContentsAsString(blobFile1);
+                String content2 = Utils.readContentsAsString(blobFile2);
+                Utils.writeContents(file, "<<<<<<< HEAD\n" + content2 + "=======\n" + content1 + ">>>>>>>\n");
+                stage.put(key, branchBlobsMap.get(key));
+            }
+        }
+        // save stage file
+        Utils.writeObject(Stage_FILE, stage);
+        // save removed stage file
+        Utils.writeObject(REMOVED_STAGE_FILE, removedStage);
+
+        //commit
+        if(conflict){
+            System.out.println("Encountered a merge conflict.");
+        }
+        else{
+            commitMerge("Merged " + branchName + " into " + curBranch + ".", headCommitHash, branchHeadCommitHash);
+        }
+    }
 }

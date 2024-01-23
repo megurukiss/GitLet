@@ -26,10 +26,11 @@ public class Commit implements Serializable{
     private Date date;
     private String hashValue;
     private String parentHashValue;
+    private String secondParentHashValue;
 //    private String[] blobs;
     // hashmap, key: filepath, value: blob hash value
     private HashMap<String, String> blobsMap;
-    private final File commitPath;
+    private File commitPath;
     public static final File commitDir = Utils.join(Repository.GITLET_DIR, "commits");
 
     /* TODO: fill in the rest of this class. */
@@ -42,9 +43,20 @@ public class Commit implements Serializable{
         this.parentHashValue = parent;
         // copy blobs from parents commit
         this.blobsMap = new HashMap<>(loadCommit(parent).getBlobsMap());
-        this.setHash();
-        this.commitPath = Utils.join(commitDir, this.hashValue);
+//        this.setHash();
+//        this.commitPath = Utils.join(commitDir, this.hashValue);
     }
+
+    // constructor for merge commit
+public Commit(String message,String parent,String secondParent) {
+    // merge commit
+    this.message = message;
+    this.date = new Date();
+    this.parentHashValue = parent;
+    this.secondParentHashValue = secondParent;
+    // copy blobs from parents commit
+    this.blobsMap = new HashMap<>(loadCommit(parent).getBlobsMap());
+}
 
     // constructor for initial commit
     public Commit(){
@@ -53,8 +65,6 @@ public class Commit implements Serializable{
         this.date = new Date(0);
         this.parentHashValue = "null";
         this.blobsMap = new HashMap<>();
-        this.setHash();
-        this.commitPath = Utils.join(commitDir, this.hashValue);
     }
 
     // create commit folder for initial commit
@@ -79,7 +89,9 @@ public class Commit implements Serializable{
 
         this.hashValue = Utils.sha1((List<Object>) inputList);
     }
-
+    public void setPath(){
+        this.commitPath = Utils.join(commitDir, this.hashValue);
+    }
     public String getHash() {
         return hashValue;
     }
@@ -128,6 +140,8 @@ public class Commit implements Serializable{
 
     // save commit to commit folder
     public void save(){
+        this.setHash();
+        this.setPath();
         // save commit to commit folder
         if(!commitPath.exists()){
             try{
@@ -137,5 +151,17 @@ public class Commit implements Serializable{
             }
         }
         Utils.writeObject(commitPath, this);
+    }
+
+    public static String searchSplit(String commit1,String commit2) {
+        Commit c1 = loadCommit(commit1);
+        Commit c2 = loadCommit(commit2);
+        if (c1.getHash().equals(c2.getHash())) {
+            return c1.getHash();
+        } else if (c1.getDate().compareTo(c2.getDate()) > 0) {
+            return searchSplit(c1.getParentHashValue(), commit2);
+        } else {
+            return searchSplit(commit1, c2.getParentHashValue());
+        }
     }
 }

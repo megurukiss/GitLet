@@ -74,18 +74,34 @@ public class Main {
                 break;
 
             case "checkout":
+                assert args.length >= 2 && args.length <= 4;
+                if(args.length == 2){
+                    Repository.checkoutBranch(args[1]);
+                }else if(args.length == 3){
+                    Repository.checkoutSingleFile(args[2]);
+                }else{
+                    Repository.checkoutSingleFile(args[1], args[3]);
+                }
                 break;
 
             case "branch":
+                assert args.length == 2;
+                Repository.branch(args[1]);
                 break;
 
             case "rm-branch":
+                assert args.length == 2;
+                Repository.removeBranch(args[1]);
                 break;
 
             case "reset":
+                assert args.length == 2;
+                Repository.reset(args[1]);
                 break;
 
             case "merge":
+                assert args.length == 2;
+                Repository.merge(args[1]);
                 break;
 
             default:

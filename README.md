@@ -43,6 +43,10 @@
 9. `Static Void checkoutSingleFile(String fileName)`: checks out the file in head commit
 10. `Static Void checkoutSingleFile(String commitHash, String fileName)`: checks out the file in the given commit
 11. `Static Void checkoutBranch(String branchName)`: checks out the branch
+12. `Static Void branch(String branchName)`: creates a new branch
+13. `Static Void removeBranch(String branchName)`: removes the branch
+14. `Static Void reset(String commitHash)`: resets the repository to the given commit
+15. `Static Void merge(String branchName)`: merges the given branch to the current branch
 
 
 ### Commit Class
@@ -53,7 +57,7 @@
 3. String timestamp, the commit timestamp
 4. String parent, the parent commit hash
 5. HashMap<String,String> blobsMap, keys are the file paths, values are the blob hashes
-6. Final File commitPath, the path of the commit file
+6. File commitPath, the path of the commit file
 7. Static final File commitDir, the path of the commit folder
 
 #### Methods
@@ -61,12 +65,14 @@
 2. `Commit()`: constructor for initial commit
 3. `String getHash()`: returns the hash of the commit
 4. `Void setHash()`: sets the hash of the commit
+5. `Void setPath()`: sets the path of the commit
 5. `String getMessage()`: returns the commit message
 6. `Void save()`: saves the commit to the commit folder
 7. `Static Void createCommitFolder()`: creates the commit folder
 8. `Static Commit loadCommit(String hash)`: loads the commit from the commit folder
 9. `Void updateBlobsMap(HashMap<String, String> stage)`: updates the blobs map given the stage HashMap
 10. `Void deleteBlobsMap(HashMap<String, String> remv)`: deletes the blobs from the blobs map given the remove HashMap
+11. `Static Void searchSplit(String commit1,String commit2)`: searches the nearest split point of the two commits
 
 
 ### Branch Class
